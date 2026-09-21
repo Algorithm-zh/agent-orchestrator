@@ -297,6 +297,54 @@ func TestBeginInputDrainReturnsTheLastAcceptedWriteBarrier(t *testing.T) {
 	}
 }
 
+
+func TestServePrunesLastInputAtAfterLastViewerCloses(t *testing.T) {
+	p1, p2 := newFakePTY(), newFakePTY()
+	mgr := NewManager(&fakeSource{alive: true, spawner: &fakeSpawner{ptys: []*fakePTY{p1, p2}}}, nil, testLogger(), WithHeartbeat(0))
+	defer mgr.Close()
+
+	connA, connB := newFakeConn(), newFakeConn()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go mgr.Serve(ctx, connA)
+	go mgr.Serve(ctx, connB)
+
+	for _, conn := range []*fakeConn{connA, connB} {
+		conn.in <- clientMsg{Ch: chTerminal, ID: "t1", Type: msgOpen}
+		recv(t, conn, chTerminal, msgOpened, time.Second)
+	}
+	connA.in <- clientMsg{Ch: chTerminal, ID: "t1", Type: msgData, Data: base64.StdEncoding.EncodeToString([]byte("input\n"))}
+	eventually(t, time.Second, func() bool {
+		mgr.inputMu.Lock()
+		defer mgr.inputMu.Unlock()
+		return !mgr.lastInputAt["t1"].IsZero()
+	})
+
+	connA.in <- clientMsg{Ch: chTerminal, ID: "t1", Type: msgClose}
+	eventually(t, time.Second, func() bool {
+		select {
+		case <-p1.closed:
+			return true
+		default:
+			return false
+		}
+	})
+	mgr.inputMu.Lock()
+	_, retained := mgr.lastInputAt["t1"]
+	mgr.inputMu.Unlock()
+	if !retained {
+		t.Fatal("lastInputAt pruned while another viewer was still attached")
+	}
+
+	connB.in <- clientMsg{Ch: chTerminal, ID: "t1", Type: msgClose}
+	eventually(t, time.Second, func() bool {
+		mgr.inputMu.Lock()
+		defer mgr.inputMu.Unlock()
+		_, exists := mgr.lastInputAt["t1"]
+		return !exists
+	})
+}
+
 // nextTerminal returns the next frame on conn.out (no skipping), so callers can
 // assert frame ordering rather than just presence.
 func nextTerminal(t *testing.T, c *fakeConn) serverMsg {

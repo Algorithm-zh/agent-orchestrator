@@ -275,6 +275,9 @@ func (m *Manager) leaveTerminal(id string, c *connState) {
 	delete(s.members, c)
 	if len(s.members) == 0 {
 		delete(m.shared, id)
+		m.inputMu.Lock()
+		delete(m.lastInputAt, id)
+		m.inputMu.Unlock()
 		return
 	}
 	m.reconcileLocked(id, s, false)
