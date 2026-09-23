@@ -1763,6 +1763,7 @@
 	"displayStatus.needsReview": "Necesita revisión",
 	"displayStatus.reviewScheduled": "Revisión programada",
 	"displayStatus.reviewing": "Revisando",
+	"displayStatus.reviewFailed": "Revisión fallida",
 	"displayStatus.reviewPending": "Revisión pendiente",
 	"displayStatus.draft": "Borrador",
 	"displayStatus.ciFailing": "Verificaciones fallidas",
